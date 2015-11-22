@@ -5,8 +5,8 @@ After downloading the .csv files, we load the data as usual.
 
 ```{r}
 # Change this to your data directory
-#data.dir <- "/Users/Ricky/Dropbox/2015_aut/stats202/"
-#setwd(data.dir)
+data.dir <- "C:/users/anc/Downloads/stats202/ALS"
+setwd(data.dir)
 # Read in each data files into a data frame
 training.target <- read.csv("training_target.csv")
 training.features <- read.csv("training_features.csv")
@@ -15,30 +15,51 @@ validation.target <- read.csv("validation_target.csv")
 leaderboard.features<- read.csv("leaderboard_features.csv")
 ```
 
-Let's take a look at the format of **training.target** data:
-
+Imputing the NA's with median values
 ```{r}
-head(training.target)
+data.train <- as.data.frame(lapply(training.features, function(x) {x[is.na(x)] <- median(x, na.rm=TRUE); x}))
+data.train$ALSFRS_slope = training.target$ALSFRS_slope
+data.train = data.train[,2:ncol(data.train)]
+
+
+data.leaderboard <- as.data.frame(lapply(leaderboard.features, function(x) {x[is.na(x)] <- median(x, na.rm=TRUE);x}))
+mark = sapply(data.leaderboard,function(x)all(is.na(x)))
+data.leaderboard= data.leaderboard[,!mark]
+data.leaderboard$ALSFRS_slope = training.target$ALSFRS_slope[nrow(data.leaderboard)]
+data.leaderboard = data.leaderboard[,2:ncol(data.leaderboard)]
+
+#clean up for data.train
+data.train= data.train[,!mark]
+
+library(glmnet)
+x=model.matrix(ALSFRS_slope???.,data=data.train )
+y=data.train$ALSFRS_slope
+set.seed(1)
+train=sample (1: nrow(x), nrow(x)/2)
+test=(-train)
+y.test=y[test]
+x.leaderboard=model.matrix(ALSFRS_slope???.,data=data.leaderboard)
+#y.leaderboard=data.leaderboard$ALSFRS_slope
+
+grid=10^seq(10,-2, length =100)
+lasso.mod=glmnet (x,y,alpha=1, lambda=grid) 
+cv.out=cv.glmnet(x,y,alpha=1)
+plot(cv.out)
+bestlam =cv.out$lambda.min
+
+lasso.pred=predict (lasso.mod ,s=bestlam ,newx=x[test,])
+mean((lasso.pred -y.test)^2)
+
+lasso.pred1 = predict(lasso.mod, s= bestlam, newx= x.leaderboard)
+
+leaderboard.predictions <- read.csv("leaderboard_predictions-example.csv")
+
+leaderboard.predictions$ALSFRS_slope <- lasso.pred1
+
+write.csv(leaderboard.predictions, file = "leaderboard_predictions.csv",row.names=FALSE)
+
 ```
 
-We also load the **leaderboard_predictions-example.csv** file to see the output format. 
 
-```{r}
-leaderboard.predictions <- read.csv("leaderboard_predictions-example.csv") 
-head(leaderboard.predictions)
-```
-The format matches with the **training.target**. 
 
-Here, for each leaderboard subject, let's predict the target by the mean of the training target.
 
-```{r}
-training_target_mean <- mean(training.target$ALSFRS_slope)
-print(training_target_mean)
-leaderboard.predictions$ALSFRS_slope <- training_target_mean
-```
-
-We use **write.csv** function to write a CSV file in the contest format with the leaderboard subject predictions. 
-
-```{r}
-write.csv(leaderboard.predictions, file = "leaderboard_predictions-training_mean.csv",row.names=FALSE)
-```
